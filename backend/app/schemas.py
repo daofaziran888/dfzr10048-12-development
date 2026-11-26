@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 T = TypeVar("T")
 
@@ -27,5 +27,10 @@ class EntryPayload(BaseModel):
 
 
 class ActionPayload(BaseModel):
+    # 允许旧客户端只发 action，也允许交接/试领等新动作在顶层携带任意业务字段。
+    model_config = ConfigDict(extra="allow")
+
     action: str
     remark: str | None = None
+    values: dict[str, Any] = Field(default_factory=dict)
+    payload: dict[str, Any] = Field(default_factory=dict)

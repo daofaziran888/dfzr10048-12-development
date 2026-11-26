@@ -51,7 +51,11 @@ class BaseModuleService:
         if missing:
             return None, missing
         rows = store.rows(self.MODULE)
-        entry = {"id": max((int(row.get("id", 0)) for row in rows), default=0) + 1}
+        entry = {
+            key: value for key, value in values.items()
+            if key not in {"id", "status", "pending", "abnormal"}
+        }
+        entry["id"] = max((int(row.get("id", 0)) for row in rows), default=0) + 1
         entry.update({field: values.get(field) for field in self.LIST_FIELDS})
         entry["status"] = self.STATUS_ORDER[0]
         entry["pending"] = True
@@ -59,7 +63,12 @@ class BaseModuleService:
         rows.append(entry)
         return entry, []
 
-    def run_action(self, entry_id: int, action: str) -> tuple[dict[str, Any] | None, str]:
+    def run_action(
+        self,
+        entry_id: int,
+        action: str,
+        context: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any] | None, str]:
         entry = store.find(self.MODULE, entry_id)
         if entry is None:
             return None, f"{self.ENTITY} {entry_id} 不存在或已归档"

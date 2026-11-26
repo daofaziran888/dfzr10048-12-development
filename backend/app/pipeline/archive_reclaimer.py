@@ -7,8 +7,17 @@
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 from datetime import datetime, timedelta
+
+from app.pipeline.archive_handoff import (
+    ArchiveHandoff,
+    ArchiveHandoffCenter,
+    ArchiveHandoffService,
+    ShelfHandoff,
+    ShelfHandoffService,
+    ShardHandoff,
+)
 
 
 class ArchiveEntry:
@@ -60,6 +69,13 @@ class ArchiveReclaimer:
 
     def __init__(self) -> None:
         self._archives: list[ArchiveEntry] = []
+        # 逐片交接/回执结算是归档恢复链路上的独立状态机。
+        self.handoff_center = ArchiveHandoffCenter()
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.handoff_center, name)
 
     def archive_media(
         self, archive_id: str, media_id: str, shelf_label: str,

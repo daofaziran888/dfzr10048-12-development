@@ -15,6 +15,9 @@
       </div>
     </header>
 
+    <ArchiveHandoffPanel v-if="moduleKey === 'archive_shelf'" />
+    <RedeliveryClaimPanel v-else-if="moduleKey === 'fail_redeliver'" />
+
     <div class="stat-row">
       <article v-for="item in stats" :key="item.label" class="stat-card">
         <span class="stat-label">{{ item.label }}</span>
@@ -104,6 +107,8 @@ import {
   runAction as applyAction,
 } from '@/api/backend-service'
 import type { EntryRow } from '@/data/types'
+import ArchiveHandoffPanel from '@/components/ArchiveHandoffPanel.vue'
+import RedeliveryClaimPanel from '@/components/RedeliveryClaimPanel.vue'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)

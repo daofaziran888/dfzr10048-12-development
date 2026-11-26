@@ -8,7 +8,9 @@
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
+
+from app.pipeline.archive_handoff import ArchiveHandoffCenter
 
 
 class RedeliverEntry:
@@ -50,6 +52,55 @@ class RedeliverEngine:
         self._entries: list[RedeliverEntry] = []
         self._success_set: set[str] = set()
         self._failed_set: set[str] = set()
+        # 逐片交接回执/实际可读字节结算能力由专门状态机承载。
+        self.handoff_center = ArchiveHandoffCenter()
+        self.partial_readable_bytes: dict[str, int] = {}
+        self.gap_bytes: dict[str, int] = {}
+        self.settled_receipts: dict[str, str] = {}
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.handoff_center, name)
+
+    def settle_readable_content(
+        self,
+        shard_id: str,
+        readable_bytes: int,
+        required_bytes: int | None = None,
+        *,
+        receipt_id: str | None = None,
+        checksum_verified: bool = False,
+        source_shelf_id: str | None = None,
+    ) -> dict[str, Any]:
+        """按实际可读内容结算缺口；不完整或校验未过时缺口保留。"""
+        readable = max(0, int(readable_bytes))
+        self.partial_readable_bytes[shard_id] = readable
+        if required_bytes is not None:
+            self.gap_bytes[shard_id] = int(required_bytes)
+        required = self.gap_bytes.get(shard_id, int(required_bytes or 0))
+        complete = required > 0 and readable >= required
+        already = shard_id in self._success_set
+        settled = bool(complete and checksum_verified and not already)
+        if settled and receipt_id:
+            if receipt_id in self.settled_receipts:
+                settled = False
+            else:
+                self.settled_receipts[receipt_id] = shard_id
+                self._success_set.add(shard_id)
+        return {
+            "ok": settled or already,
+            "settled": settled,
+            "already_settled": already and not settled,
+            "shard_id": shard_id,
+            "readable_bytes": readable,
+            "required_bytes": required,
+            "missing_bytes": max(0, required - readable),
+            "gap_retained": not (complete and checksum_verified),
+            "checksum_verified": checksum_verified,
+            "source_shelf_id": source_shelf_id,
+            "receipt_id": receipt_id,
+        }
 
     def register_success(self, shard_id: str) -> None:
         """登记一个已成功产出的分片。"""

@@ -94,5 +94,21 @@ def create_entry(module: str, payload: EntryPayload) -> ActionResult:
 @router.post("/{module}/{entry_id}/actions", response_model=ActionResult)
 def run_action(module: str, entry_id: int, payload: ActionPayload) -> ActionResult:
     service = require_service(module)
-    entry, message = service.run_action(entry_id, payload.action.strip())
-    return ActionResult(ok=entry is not None, message=message, entry=entry)
+    body = payload.model_dump(exclude={"action", "remark"})
+    context: dict[str, Any] = {}
+    extra = getattr(payload, "__pydantic_extra__", None)
+    if isinstance(extra, dict):
+        context.update(extra)
+    context.update(body.get("values") if isinstance(body.get("values"), dict) else {})
+    context.update(body.get("payload") if isinstance(body.get("payload"), dict) else {})
+    # 顶层额外字段优先级最高，兼容测试直接把 task_id/recoverer 与 action 并列发送。
+    context.update({k: v for k, v in body.items() if k not in {"values", "payload"}})
+    try:
+        entry, message = service.run_action(entry_id, payload.action.strip(), context)
+    except TypeError:
+        # 兼容未声明 context 参数的自定义/旧服务。
+        entry, message = service.run_action(entry_id, payload.action.strip())
+    ok = entry is not None
+    if isinstance(entry, dict) and "ok" in entry:
+        ok = bool(entry.get("ok"))
+    return ActionResult(ok=ok, message=message, entry=entry)
